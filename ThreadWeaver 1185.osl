@@ -1,0 +1,434 @@
+// ThreadWeaver.osl
+// Author: MAMA (Matthew Hafez) - AI-assisted
+// Version: 1.18.5
+// License: MIT
+
+shader ThreadWeaver
+[[
+    string label    = "Thread Weaver",
+    string category = "MAMA / Shapes",
+    string help     = "Procedural thread/weave rings with dashed segments; pixel-aware scaling; color, mask, and tangent-space normal outputs."
+]]
+(
+    /* ============================== UV ============================== */
+    float  PixelsPerUV = 2048.0            [[ string page="UV",       string label="Pixels per UV", float min=1, float max=16384 ]],
+    point  UVInput     = point(u, v, 0)    [[ string page="UV",       string label="UV Input" ]],
+    vector TileCount   = vector(4.0, 4.0, 1.0) [[ string page="UV",   string label="Tile Count (U,V)", float min=0.001, float max=4096 ]],
+    float  TileMultiplier = 1.0            [[ string page="UV",       string label="Tile Multiplier", float min=0.001, float max=64.0 ]],
+    float  AspectRatio = 1.0               [[ string page="UV",       string label="Aspect Ratio (V per U)", float min=0.1, float max=10.0 ]],
+    vector OffsetUV    = 0                 [[ string page="UV",       string label="Offset (U,V)" ]],
+    float  RotateDeg   = 0                 [[ string page="UV",       string label="Rotate", float min=-180, float max=180 ]],
+
+    /* ============================== THREADS ============================== */
+    float  Line_Spacing     = 0.30         [[ string page="Threads",  string label="Spacing", float min=0.0, float max=8.0 ]],
+    float  Line_SpacingIdx1 = 0.00         [[ string page="Threads",  string label="Spacing Stagger (Thread 1)", float min=-8.0, float max=8.0 ]],
+    float  Line_SpacingIdx2 = 0.00         [[ string page="Threads",  string label="Spacing Stagger (Thread 2)", float min=-8.0, float max=8.0 ]],
+
+    float  Line_Thickness = 0.02           [[ string page="Threads",  string label="Thickness", float min=0.0, float max=1.0 ]],
+    float  Thick_Idx1     = 0.0            [[ string page="Threads",  string label="Thickness Stagger (Thread 1)", float min=-1.0, float max=1.0 ]],
+    float  Thick_Idx2     = 0.0            [[ string page="Threads",  string label="Thickness Stagger (Thread 2)", float min=-1.0, float max=1.0 ]],
+
+    float  Dash_Length    = 0.10           [[ string page="Threads",  string label="Dash Length", float min=0.0, float max=1.0 ]],
+    float  Dash_Gap       = 0.10           [[ string page="Threads",  string label="Dash Gap", float min=0.0, float max=1.0 ]],
+    float  Dash_Phase0    = 0.0            [[ string page="Threads",  string label="Gap Phase (Thread 0)", float min=-1.0, float max=1.0 ]],
+    float  Dash_PhaseStep = 0.0            [[ string page="Threads",  string label="Gap Phase Step", float min=-1.0, float max=1.0 ]],
+
+    int    Line_SkipNU    = 0              [[ string page="Threads",  string label="Skip N U", int min=0, int max=256 ]],
+    int    Line_SkipNV    = 0              [[ string page="Threads",  string label="Skip N V", int min=0, int max=256 ]],
+
+    /* ============================== THREAD COLORS ============================== */
+    color  Line_ColorA    = color(1.0)     [[ string page="Thread Colors",  string label="Color (Thread 1)" ]],
+    color  Line_ColorB    = color(1.0)     [[ string page="Thread Colors",  string label="Color (Thread 2)" ]],
+    color  Line_ColorC    = color(1.0)     [[ string page="Thread Colors",  string label="Color (Thread 3)" ]],
+
+    /* ============================== THREAD SMOOTHING ============================== */
+    float  Line_RadSmooth = 0.04           [[ string page="Thread Smoothing",  string label="Radial Smoothing", float min=0.0, float max=1.0 ]],
+    float  Dash_TanSmooth = 0.08           [[ string page="Thread Smoothing",  string label="Tangential Smoothing", float min=0.0, float max=1.0 ]],
+
+    /* ============================== ROTATION ============================== */
+    float Rot_BaseDeg         = 0.0        [[ string page="Rotation", string label="Rotate", float min=-180.0, float max=180.0 ]],
+    float Rot_Idx1_OffsetDeg  = 0.0        [[ string page="Rotation", string label="Offset (Thread 1)", float min=-180.0, float max=180.0 ]],
+    float Rot_Idx2_OffsetDeg  = 0.0        [[ string page="Rotation", string label="Offset (Thread 2)", float min=-180.0, float max=180.0 ]],
+
+    /* ============================== RANDOM ROTATION ============================== */
+    float Rot_Tile_RandProb   = 0.0        [[ string page="Random Rotation",   string label="Tile Random Prob", float min=0.0, float max=1.0 ]],
+    float Rot_Tile_RandMaxDeg = 0.0        [[ string page="Random Rotation",   string label="Tile Random Max",  float min=0.0, float max=180.0 ]],
+    float Rot_Row_RandProb    = 0.0        [[ string page="Random Rotation",   string label="Row Random Prob",  float min=0.0, float max=1.0 ]],
+    float Rot_Row_RandMaxDeg  = 0.0        [[ string page="Random Rotation",   string label="Row Random Max",   float min=0.0, float max=180.0 ]],
+    float Rot_Seed            = 321.0      [[ string page="Random Rotation",   string label="Seed", float min=-1.0e6, float max=1.0e6 ]],
+
+    /* ============================== ARRANGE ============================== */
+    float Bias_Idx0           = 0.0        [[ string page="Arrange",  string label="Thread 0 Bias", float min=0.0, float max=0.5 ]],
+
+    /* ============================== SHADING (cross-section) ============================== */
+    int   Shade_Enable      = 1            [[ string page="Shading",  string label="Enable", string widget="checkBox" ]],
+    float Shade_ProfileGain = 0.25         [[ string page="Shading",  string label="Cross-section Gain", float min=0.0, float max=1.0 ]],
+    float Shade_ProfileWidth= 0.70         [[ string page="Shading",  string label="Cross-section Width", float min=0.0, float max=1.0 ]],
+    float Shade_RadSmooth   = 0.04         [[ string page="Shading",  string label="Radial Smoothing", float min=0.0, float max=1.0 ]],
+
+    /* ============================== NORMAL (tangent) ============================== */
+    float  Normal_Strength   = 1.0         [[ string page="Normal",   string label="Strength", float min=0.0, float max=3.0 ]],
+    int    Normal_FlipY      = 0           [[ string page="Normal",   string label="Flip Y (DX)", string widget="checkBox" ]],
+    float  Normal_RotateDeg  = 0.0         [[ string page="Normal",   string label="Rotate", float min=-180.0, float max=180.0 ]],
+    float  Normal_BlurPx     = 0.0         [[ string page="Normal",   string label="Blur Radius (px)", float min=0.0, float max=8.0 ]],
+
+    /* ============================== OUTPUT ============================== */
+    int    PremultiplyOutput = 1           [[ string page="Output",   string label="Premultiply", string widget="checkBox" ]],
+    output color outColor = 0,
+    output float outMask  = 0,
+    output color outNormal = color(0.5, 0.5, 1.0),
+    output float outThread1 = 0,
+    output float outThread2 = 0,
+    output float outThread3 = 0
+)
+{
+    /* ---------- helpers ---------- */
+    float saturate (float x) { return clamp(x, 0.0, 1.0); }
+    float sstep (float a0, float a1, float x) {
+        float t = saturate((x - a0) / max(a1 - a0, 1.0e-6));
+        return t * t * (3.0 - 2.0 * t);
+    }
+    float fractf (float x) { return x - floor(x); }
+    float TWO_PI = 6.28318530717958647693;
+    float eps = 1.0e-6;
+
+    float hash2i (int x, int y, float seed) {
+        float fx = (float)x, fy = (float)y;
+        float n = sin(dot(vector(fx, fy, seed), vector(12.9898, 78.233, 37.719)));
+        return fractf(sin(n) * 43758.5453);
+    }
+
+    // Periodic pulse: 1 inside [0,width), 0 outside, feathered; wrap-safe.
+    float periodic_pulse (float f, float width, float feather)
+    {
+        float w  = clamp(width, 0.0, 1.0);
+        float df = max(1.0e-6, feather);
+
+        float a1 = sstep(0.0 - df, 0.0 + df, f);
+        float b1 = 1.0 - sstep(w   - df, w   + df, f);
+        float base = a1 * b1;
+
+        float a2 = sstep(1.0 - df, 1.0 + df, f);
+        float b2 = 1.0 - sstep(1.0 + w - df, 1.0 + w + df, f);
+        float wrap = a2 * b2;
+
+        return saturate(max(base, wrap));
+    }
+
+    /* per-thread spacing & thickness helpers (allow up to 8.0) */
+    float spacing_for_idx(int idx) {
+        float s0 = clamp(Line_Spacing, 0.0, 8.0);
+        float s1 = clamp(Line_Spacing + Line_SpacingIdx1, 0.0, 8.0);
+        float s2 = clamp(Line_Spacing + Line_SpacingIdx2, 0.0, 8.0);
+        return (idx == 0) ? s0 : ((idx == 1) ? s1 : s2);
+    }
+    float thickness_for_idx(int idx) {
+        float t0 = Line_Thickness;
+        float t1 = max(0.0, Line_Thickness * (1.0 + Thick_Idx1));
+        float t2 = max(0.0, Line_Thickness * (1.0 + Thick_Idx2));
+        return (idx == 0) ? t0 : ((idx == 1) ? t1 : t2);
+    }
+
+    
+    /* thickness-aware radial smoothing per thread:
+       scales Line_RadSmooth by thickness ratio so thinner threads keep their stagger
+       factor = clamp( thickness_i / base_thickness , 0.25 .. 2.0 )
+    */
+    float radial_smoothing_for_idx (int idx)
+    {
+        float base_th = max(Line_Thickness, 1.0e-6);
+        float ti      = thickness_for_idx(idx);
+        float ratio   = ti / base_th;
+        float factor  = clamp(ratio, 0.25, 2.0);   // keep sane bounds
+        return Line_RadSmooth * factor;
+    }
+
+/* ---------- rotation resolver (base + per-thread + random) ---------- */
+    float rot_deg_for_tile_with_index(int ju, int jv)
+    {
+        float rot = 0.0;
+
+        int idx = ((ju + jv) % 3);
+        rot += Rot_BaseDeg;
+        if (idx == 1) rot += Rot_Idx1_OffsetDeg;
+        else if (idx == 2) rot += Rot_Idx2_OffsetDeg;
+
+        if (Rot_Row_RandProb > 0.0 && Rot_Row_RandMaxDeg > 0.0) {
+            float r = hash2i(0, jv,  Rot_Seed + 13.0);
+            if (r < clamp(Rot_Row_RandProb, 0.0, 1.0)) {
+                float mag = Rot_Row_RandMaxDeg * hash2i(11, jv, Rot_Seed + 17.0);
+                float sgn = (hash2i(23, jv, Rot_Seed + 19.0) < 0.5) ? -1.0 : 1.0;
+                rot += sgn * mag;
+            }
+        }
+        if (Rot_Tile_RandProb > 0.0 && Rot_Tile_RandMaxDeg > 0.0) {
+            float r2 = hash2i(ju, jv, Rot_Seed + 101.0);
+            if (r2 < clamp(Rot_Tile_RandProb, 0.0, 1.0)) {
+                float mag2 = Rot_Tile_RandMaxDeg * hash2i(ju + 37, jv + 59, Rot_Seed + 73.0);
+                float sgn2 = (hash2i(ju + 5, jv + 7, Rot_Seed + 79.0) < 0.5) ? -1.0 : 1.0;
+                rot += sgn2 * mag2;
+            }
+        }
+        return rot;
+    }
+
+    /* ---------- UV pipeline ---------- */
+    point uv = UVInput;
+
+    float r = radians(RotateDeg);
+    point center = point(0.5, 0.5, 0.0);
+    point uv0 = uv - center;
+    float cs = cos(r), sn = sin(r);
+    point uvr = point( uv0[0]*cs - uv0[1]*sn, uv0[0]*sn + uv0[1]*cs, 0.0 ) + center;
+
+    vector ScaleEff = vector(TileCount[0] * TileMultiplier,
+                             TileCount[1] * TileMultiplier * max(AspectRatio, 1.0e-6),
+                             1.0);
+
+    point uvw = point(uvr[0]*ScaleEff[0] + OffsetUV[0],
+                      uvr[1]*ScaleEff[1] + OffsetUV[1], 0.0);
+
+    float pxS = 2048.0 / max(PixelsPerUV, 1.0e-6);
+
+    /* ---------- candidate evaluation (no distort) ---------- */
+    float eval_candidate(int ju, int jv, float cu, float cv, point Puv,
+                         float R, float halfT, float fthrR, float L, float cyc,
+                         float dfTan, float phase)
+    {
+        float dx = Puv[0] - cu;
+        float dy = Puv[1] - cv;
+
+        float rL     = sqrt(dx*dx + dy*dy);
+        float theta  = atan2(dy, dx);
+        float utheta = theta / TWO_PI + 0.5;
+
+        float rot_turns = radians( rot_deg_for_tile_with_index(ju, jv) ) / TWO_PI;
+        utheta = fractf(utheta + rot_turns);
+
+        float dashFrac = clamp(L / max(cyc, 1.0e-6), 0.0, 1.0);
+        float f = fractf((utheta + phase) / max(cyc, 1.0e-6));
+        float tangMask = periodic_pulse(f, dashFrac, clamp(dfTan, 0.0, 1.0));
+
+        float distFromBand = abs(rL - R);
+        float radialMask   = 1.0 - sstep(halfT, halfT + fthrR, distFromBand);
+
+        return saturate(radialMask * tangMask);
+    }
+
+    /* ---------- top-2 search with thread0 bias (per-thread R/Thickness) ---------- */
+    void eval_top2(point Puv,
+                   output float a1, output int ju1, output int jv1,
+                   output float a2, output int ju2, output int jv2)
+    {
+        float L       = saturate(Dash_Length);
+        float G       = saturate(Dash_Gap);
+        float cyc     = max(1.0e-6, L + G);
+        float dfTan   = clamp(Dash_TanSmooth, 0.0, 1.0);
+
+        // worst-case radius cap: allow up to 8.0
+        float Rcap = clamp(max(Line_Spacing,
+                               max(Line_Spacing + Line_SpacingIdx1,
+                                   Line_Spacing + Line_SpacingIdx2)) * pxS, 0.0, 8.0);
+
+        int jiu = (int)floor(Puv[0] + eps);
+        int jiv = (int)floor(Puv[1] + eps);
+
+        float halfTcap = 0.5 * max(1.0e-6, max(thickness_for_idx(0),
+                                               max(thickness_for_idx(1), thickness_for_idx(2))) * pxS);
+        float fthrRcap = max(1.0e-6, Line_RadSmooth * pxS);
+        float Rmax = Rcap + halfTcap + fthrRcap;
+        int K = (int)clamp(ceil(Rmax) + 2, 1, 16);
+
+        a1 = 0.0; a2 = 0.0;
+        ju1 = jiu; jv1 = jiv; ju2 = jiu; jv2 = jiv;
+
+        for (int du = -K; du <= K; du++) {
+            for (int dv = -K; dv <= K; dv++) {
+                int ju = jiu + du;
+                int jv = jiv + dv;
+
+                if ( (Line_SkipNU > 0 && (ju % Line_SkipNU) == 0) ||
+                     (Line_SkipNV > 0 && (jv % Line_SkipNV) == 0) )
+                    continue;
+
+                float cu = (float)ju + 0.5;
+                float cv = (float)jv + 0.5;
+
+                int idx = ((ju + jv) % 3);
+                float phase_i = clamp(Dash_Phase0 + Dash_PhaseStep * (float)idx, -1.0, 1.0);
+
+                float R_i     = max(0.0, spacing_for_idx(idx) * pxS);
+                float halfT_i = 0.5 * max(1.0e-6, thickness_for_idx(idx) * pxS);
+                float fthrR   = max(1.0e-6, radial_smoothing_for_idx(idx) * pxS);
+
+                float a = eval_candidate(ju, jv, cu, cv, Puv, R_i, halfT_i, fthrR, L, cyc, dfTan, phase_i);
+
+                float b = clamp(Bias_Idx0, 0.0, 0.5); // Thread 0 bias
+                if (idx == 0) a = saturate(a * (1.0 + b));
+                else          a = saturate(a * (1.0 - b));
+
+                if (a > a1) { a2 = a1; ju2 = ju1; jv2 = jv1; a1 = a;  ju1 = ju;  jv1 = jv; }
+                else if (a > a2) { a2 = a;  ju2 = ju;  jv2 = jv; }
+            }
+        }
+    }
+
+    /* ---------- composite height (winner only) ---------- */
+    float eval_height_composite(point Puv,
+                                output int oJu, output int oJv)
+    {
+        float a1; int ju1; int jv1;
+        float a2; int ju2; int jv2;
+        eval_top2(Puv, a1, ju1, jv1, a2, ju2, jv2);
+        oJu = ju1; oJv = jv1;
+        return a1;
+    }
+
+    /* ---------- shading (cross-section with radial smoothing) ---------- */
+    float eval_cross_shade(int ju, int jv, point Puv)
+    {
+        float cx = (float)ju + 0.5;
+        float cy = (float)jv + 0.5;
+
+        float dx = Puv[0] - cx;
+        float dy = Puv[1] - cy;
+
+        int idx = ((ju + jv) % 3);
+        float R       = max(0.0, spacing_for_idx(idx) * pxS);
+        float th = 0.5 * max(1.0e-6, thickness_for_idx(idx) * pxS);
+
+        float rL = sqrt(dx*dx + dy*dy);
+        float y_rad = (rL - R);
+        float s = clamp(y_rad / max(th, 1.0e-6), -1.0, 1.0);
+
+        float fthrS = max(1.0e-6, (Shade_RadSmooth * pxS) / max(th, 1.0e-6));
+        float ShadeWidth = clamp(Shade_ProfileWidth, 0.0, 1.0);
+        return 1.0 - sstep(ShadeWidth - fthrS, ShadeWidth + fthrS, abs(s));
+    }
+
+    /* ---------- LOCAL ring contribution ---------- */
+    float eval_tile_contrib(int ju, int jv, point Puv)
+    {
+        float L       = saturate(Dash_Length);
+        float G       = saturate(Dash_Gap);
+        float cyc     = max(1.0e-6, L + G);
+        float dfTan   = clamp(Dash_TanSmooth, 0.0, 1.0);
+
+        float cx = (float)ju + 0.5;
+        float cy = (float)jv + 0.5;
+
+        int idx = ((ju + jv) % 3);
+        float phase_i = clamp(Dash_Phase0 + Dash_PhaseStep * (float)idx, -1.0, 1.0);
+
+        float R       = max(0.0, spacing_for_idx(idx) * pxS);
+        float halfT   = 0.5 * max(1.0e-6, thickness_for_idx(idx) * pxS);
+        float fthrR   = max(1.0e-6, radial_smoothing_for_idx(idx) * pxS);
+
+        return eval_candidate(ju, jv, cx, cy, Puv, R, halfT, fthrR, L, cyc, dfTan, phase_i);
+    }
+
+    
+    /* lightweight wrapper: composite height only */
+    float eval_height_only(point Puv_)
+    {
+        int jx, jy;
+        return eval_height_composite(Puv_, jx, jy);
+    }
+
+    /* ---------- color/masks ---------- */
+    int bestJu, bestJv;
+    float A = eval_height_composite(uvw, bestJu, bestJv);
+
+    color shadeMul = color(1.0);
+    if (A > 0.0 && Shade_Enable != 0) {
+        float tc  = eval_cross_shade(bestJu, bestJv, uvw);
+        float g   = 1.0 + Shade_ProfileGain * tc;
+        shadeMul = color(g, g, g);
+    }
+
+    int idx = ((bestJu + bestJv) % 3);
+    color baseCol = (idx == 0) ? Line_ColorA : ((idx == 1) ? Line_ColorB : Line_ColorC);
+    color outCol = baseCol * shadeMul * A;
+
+    outMask = A;
+    outColor = (PremultiplyOutput != 0) ? outCol : ((A > 1.0e-6) ? outCol / A : outCol);
+    outThread1   = (idx == 0) ? outMask : 0.0;
+    outThread2   = (idx == 1) ? outMask : 0.0;
+    outThread3 = (idx == 2) ? outMask : 0.0;
+
+    /* ---------- NORMALS (softened; single best tile) ---------- */
+    {
+        // derivative step (unchanged except larger cap applied earlier)
+        int   idxW    = ((bestJu + bestJv) % 3);
+        float halfTpx = 0.5 * max(1.0e-6, thickness_for_idx(idxW) * pxS);
+        float fthrpx  = max(1.0e-6, radial_smoothing_for_idx(idxW) * pxS);
+        float bandpx  = max(halfTpx, fthrpx);
+        float sUV     = clamp(0.5 * bandpx / max(PixelsPerUV, 1.0e-6), 1.0e-6, 0.25);
+
+        float blurUV  = Normal_BlurPx / max(PixelsPerUV, 1.0e-6);
+        float s       = sUV + blurUV;
+
+        float su = s * ScaleEff[0];
+        float sv = s * ScaleEff[1];
+
+        point du = point(su, 0.0, 0.0);
+        point dv = point(0.0, sv, 0.0);
+
+        // Primary: single-winner tile (keeps look consistent with color/mask)
+        float Fl1 = eval_tile_contrib(bestJu, bestJv, uvw - du);
+        float Fr1 = eval_tile_contrib(bestJu, bestJv, uvw + du);
+        float Fd1 = eval_tile_contrib(bestJu, bestJv, uvw - dv);
+        float Fu1 = eval_tile_contrib(bestJu, bestJv, uvw + dv);
+
+        float invu = 1.0 / max(2.0 * su, 1.0e-6);
+        float invv = 1.0 / max(2.0 * sv, 1.0e-6);
+        float gx = (Fr1 - Fl1) * invu;
+        float gy = (Fu1 - Fd1) * invv;
+
+        // If the local signal is weak (very small gradient or mask), fall back to composite sampling
+        float grad2 = gx*gx + gy*gy;
+        if (grad2 < 1.0e-10 || A < 1.0e-5) {
+            float Flc = eval_height_only(uvw - du);
+            float Frc = eval_height_only(uvw + du);
+            float Fdc = eval_height_only(uvw - dv);
+            float Fuc = eval_height_only(uvw + dv);
+            gx = (Frc - Flc) * invu;
+            gy = (Fuc - Fdc) * invv;
+
+            // If still tiny, shrink step once
+            if ((gx*gx + gy*gy) < 1.0e-10) {
+                float s2  = max(s * 0.5, 1.0e-6);
+                float su2 = s2 * ScaleEff[0];
+                float sv2 = s2 * ScaleEff[1];
+                point du2 = point(su2, 0.0, 0.0);
+                point dv2 = point(0.0, sv2, 0.0);
+                Flc = eval_height_only(uvw - du2);
+                Frc = eval_height_only(uvw + du2);
+                Fdc = eval_height_only(uvw - dv2);
+                Fuc = eval_height_only(uvw + dv2);
+                float invu2 = 1.0 / max(2.0 * su2, 1.0e-6);
+                float invv2 = 1.0 / max(2.0 * sv2, 1.0e-6);
+                gx = (Frc - Flc) * invu2;
+                gy = (Fuc - Fdc) * invv2;
+            }
+        }
+
+        float kN = clamp(Normal_Strength, 0.0, 3.0);
+        vector nT = vector(-gx * kN,
+                           (Normal_FlipY != 0) ? (gy * kN) : (-gy * kN),
+                           1.0);
+
+        if (abs(Normal_RotateDeg) > 1.0e-6) {
+            float a  = radians(Normal_RotateDeg);
+            float c2 = cos(a), s2 = sin(a);
+            float nx = nT[0]*c2 - nT[1]*s2;
+            float ny = nT[0]*s2 + nT[1]*c2;
+            nT = vector(nx, ny, nT[2]);
+        }
+
+        nT = normalize(nT);
+        outNormal = color(0.5 * (nT[0] + 1.0),
+                          0.5 * (nT[1] + 1.0),
+                          0.5 * (nT[2] + 1.0));
+}
+}

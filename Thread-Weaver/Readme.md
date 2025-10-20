@@ -3,6 +3,12 @@
 ![Thread Weaver Preview](./Preview%20Render.jpg)
 
 Procedural thread and fabric pattern generator for Redshift (Cinema 4D) and other OSL-compatible renderers.
+
+UI
+![Thread Weaver Preview](./ThreadWeaver1185_RSC4D_UI.jpg)
+
+
+
 Pattern Design Logic
 
 The foundation of Thread Weaver is a simple, UV-tile-aware circular line pattern. These concentric lines are dashed to simulate thread segments, and by scaling, rotating, and allowing them to intersect across tile boundaries, the shader creates the illusion of interlocking threads. mimicking woven fabric structures.

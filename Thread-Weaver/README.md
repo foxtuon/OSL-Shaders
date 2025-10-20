@@ -10,6 +10,12 @@ Procedural thread and fabric pattern generator for Redshift (Cinema 4D) and othe
 
 
 
+
+## Known Issue (v1.185)
+
+When `PixelsPerUV` is set below 1500 and `Spacing` is high (above 5), the shader output may break, showing black renders or missing dash patterns. This is caused by a sampling issue where thread masks collapse at low resolution. 
+
+
 Pattern Design Logic
 
 The foundation of Thread Weaver is a simple, UV-tile-aware circular line pattern. These concentric lines are dashed to simulate thread segments, and by scaling, rotating, and allowing them to intersect across tile boundaries, the shader creates the illusion of interlocking threads. mimicking woven fabric structures.

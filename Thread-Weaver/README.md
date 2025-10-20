@@ -4,7 +4,7 @@
 
 Procedural thread and fabric pattern generator for Redshift (Cinema 4D) and other OSL-compatible renderers.
 
-###UI
+### UI
 
 ![Thread Weaver Preview](./ThreadWeaver1185_RSC4D_UI.jpg)
 

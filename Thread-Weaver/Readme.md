@@ -1,5 +1,7 @@
 # Thread Weaver – OSL Shader
 
+![Thread Weaver Preview](./Preview%20Render.jpg)
+
 Procedural thread and fabric pattern generator for Redshift (Cinema 4D) and other OSL-compatible renderers.
 Pattern Design Logic
 

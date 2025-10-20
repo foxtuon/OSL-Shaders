@@ -2,7 +2,7 @@
 
 ## Share Your Renders
 
-Feel free to **tag me in your renders**, I’d love to see how far this little tool can go. Matthew Hafez (Mama) [instagram.com/mama.sneakers.stop](https://www.instagram.com/mama.sneakers.stop)
+Feel free to **tag me in your renders**, I’d love to see how far this little tool can go. Matthew Hafez [instagram.com/mama.sneakers.stop](https://www.instagram.com/mama.sneakers.stop)
 
 If this shader helped you and you'd like to support my work, you can **buy me a coffee [here](https://photomama.gumroad.com/coffee) or support me on Patreon** [patreon.com/mamastash](https://www.patreon.com/mamastash)
 
